@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+
+
+
+import shlex
+import subprocess
+import sys
+import argparse
+
+from influxdb import InfluxDBClient
+from influxdb.client import InfluxDBClientError
+from datetime import datetime
+
+USER = 'ats'
+PASSWORD = 'atslabb00'
+DBNAME = 'A3'
+ 
+ 
+def main():
+    host='localhost'
+    port=8086
+    metric = "rate"
+    series = []
+    ns = -1
+    fs = sys.argv[2]
+    ds= sys.argv[1]
+    o = sys.argv[3:len(sys.argv)]
+    #del sys.argv[0]
+    #sys.argv.insert(0,'python')
+    #sys.argv.insert(0,'/home/diko/anm2_v18')
+    #sys.argv.insert(0,'/tmp/A2/prober')
+    #sys.argv.insert(0,'unbuffer')
+    #sys.argv.insert(3,str(ns))
+    client = InfluxDBClient(host, port, USER, PASSWORD, DBNAME)
+    
+
+    #proc = subprocess.Popen(sys.argv,stdout=subprocess.PIPE)
+    proc = subprocess.Popen(["unbuffer","/tmp/A2/prober",str(ds),str(fs),str(ns)]+o,stdout=subprocess.PIPE)
+    for line in iter(proc.stdout.readline,''):
+       print line.rstrip('\n')
+       values = line.split('|')
+       #print "values",values[0]
+       timestamp = float(values[0])
+       #print "values[0]",values[0]
+       #oid_rates = int(i) for i in values[1:]
+       timevalue = datetime.utcfromtimestamp(timestamp)
+      
+       #print "val",val
+       #oid_tags =  sys.argv[4:len(sys.argv)]
+       oid_tags=[str(i) for i in o]
+       #print "oid_tags" , oid_tags
+       #oids = str(oid_tags)
+       string = "oid"
+       valstr = "value"
+       #tag_keys =[string+`i` for i in range(len(oid_tags))]
+       tag_keys =[string+`i` for i in range(len(oid_tags))]
+       oid_keys =[valstr+`i` for i in range(len(oid_tags))]
+       #oid_keys = ["value","value"]
+       #tag_keys = ["oid","oid"]
+       oid_rates =[float(i) for i in values[1:]]
+       #oid_rates = float(values[1])
+       #oid_tags =  str(sys.argv[4])
+       
+       #hash = {k:v for k, v in zip(oid_tags, oid_rates)}
+       #'fields': {k:v for k, v in zip(oid_tags, oid_rates)
+       for i in range(len(oid_tags)):        
+         pointValues = {
+                "measurement": metric,
+                "time":timevalue, 
+                        
+                     'fields': {
+                    #k:v for k, v in zip(oid_keys, oid_rates)
+                        "value":oid_rates[i],
+                        "timevalue":timestamp,
+                    
+                      },
+                     'tags': {
+                        "oid":oid_tags[i]
+               
+                    #k:v for k, v in zip(tag_keys, oid_tags) 
+                      }
+         }
+         series=[pointValues]
+         print series
+         client.write_points(series)
+        #result = client.query('select value from rate;')
+
+          #print("Result: {0}".format(result))
+       
+
+
+if __name__ == '__main__':
+    main()
