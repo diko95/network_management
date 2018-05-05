@@ -1,0 +1,191 @@
+#!/usr/bin/perl
+
+use strict;
+use DBI;
+use feature 'say';
+use Net::SNMP qw(:ALL); 
+
+sub my_receiver {
+      my $ip;
+      my $devicename;
+      my $stat;
+      my $status;
+      my $t;
+      my $oldstatus;
+      my $oldrtime;
+      my $rtime = time;
+      my $dbh = DBI->connect("dbi:SQLite:dbname=itsatraperer.db","","",{ RaiseError => 1}) or die $DBI::errstr;
+      foreach my $k(keys(%{$_[0]})) {
+        printf "  %-30s %s\n", $k, $_[0]{$k};
+        foreach my $r($k){
+             my $v1 = $k;
+             my $v2 = $_[0]{$k};
+             $dbh->do("INSERT INTO recv_details VALUES('$v1','$v2')");
+        }
+      }
+      foreach my $x (@{$_[1]}) { 
+          printf "  %-30s type=%-2d value=%s\n", $x->[0], $x->[2], $x->[1]; 
+          foreach my $y($x){
+             my $var1 = $x->[0];
+             my $var3 = $x->[1];
+             my $oid_value = $var3;
+             $dbh->do("INSERT INTO raw_details VALUES('$var1', '$oid_value', '$rtime')");
+             }
+      }
+      my $sql = 'select oid_val,report_time from raw_details where oid = ?';
+      my $sth = $dbh->prepare($sql);
+      $sth->execute(".1.3.6.1.4.1.41717.10.1");
+      while (my @row = $sth->fetchrow_array) {
+          $devicename =$row[0];
+          $rtime = $row[1];
+      }
+      
+      my $sqli = 'select oid_val from raw_details where oid = ?';
+      my $sthi = $dbh->prepare($sqli);
+      $sthi->execute(".1.3.6.1.4.1.41717.10.2");
+      while (my @row = $sthi->fetchrow_array) {
+         $status = $row[0];
+      }
+
+      my $sqlm = 'select id from trap_details order by id desc limit 1';
+      my $sthm = $dbh->prepare($sqlm);
+      $sthm->execute();
+      while (my @row = $sthm->fetchrow_array) {
+         $t = $row[0];
+      }
+
+      if ($t>0){
+          my $sqln = 'select status,rtime from trap_details where id =?';
+          my $sthn = $dbh->prepare($sqln);
+          $sthn->execute($t);
+          while (my @row = $sthn->fetchrow_array) {
+             
+             $oldstatus = $row[0];
+             $oldrtime = $row[1];
+          }
+      }
+      else{
+        $oldstatus = '0';
+        $oldrtime = '0';
+      }
+      $dbh->do("INSERT INTO trap_details (devicename,status,rtime,oldstatus,oldrtime)					 				VALUES('$devicename','$status','$rtime','$oldstatus','$oldrtime')");
+      
+      
+      my @indang=();
+       
+      if ($status == 3){   
+         my $sqlm = 'select * from dest_details';
+         my $sthm = $dbh->prepare($sqlm);
+         $sthm->execute();
+         while (my @row = $sthm->fetchrow_array) {
+              my $ip = $row[1];
+              my $ports = $row[2];
+              my $community = $row[3];
+              my ($session, $error) = Net::SNMP->session(
+                 -hostname  => $ip,
+                 -port => $ports,
+                 -community => $community,     
+              );
+              @indang=(".1.3.6.1.4.1.41717.20.1", OCTET_STRING, "$devicename",
+				   ".1.3.6.1.4.1.41717.20.2", UNSIGNED32, "$rtime",
+				   ".1.3.6.1.4.1.41717.20.3", INTEGER, "$oldstatus",
+				   ".1.3.6.1.4.1.41717.20.4", UNSIGNED32, "$oldrtime");
+           
+              if (!defined($session)) {
+                 printf("ERROR: %s.\n", $error);
+                 exit 1;
+              }
+              my $result = $session->trap(
+                -enterprise   => '1.3.6.1.4.1',
+                -generictrap  => 6,
+                -specifictrap => 0,
+                -varbindlist  => \@indang,
+              );
+              if (!defined($result)) {
+                printf("ERROR: %s.\n", $session->error());
+              } 
+              #else {
+               # printf("Trap-PDU sent.\n");
+              #}
+
+	 }
+         
+	     
+         
+      }
+      
+      elsif ($status == 2){
+         #if ($oldstatus != 3){   
+             my $lth = $dbh->prepare("SELECT * FROM trap_details WHERE status = 2");
+	     $lth->execute();
+             my $i=0;
+	     while (my @row = $lth->fetchrow_array())
+	     {
+	       $i++;
+	     }
+             if ($i >= 2)
+	     {
+                my $sql = 'select devicename,rtime,oldstatus,oldrtime from trap_details where status=?';
+                my $sth = $dbh->prepare($sql);
+                $sth->execute('2');
+                my @index = (1,2,3,4);
+                my @infa = ();
+                while(my @row = $sth->fetchrow_array()){
+	          my $dname = $row[0];
+	          my $retime = $row[1];
+	          my $ostatus = $row[2];
+	          my $otime = $row[3];
+                  push @infa,".1.3.6.1.4.1.41717.30.$index[0]",OCTET_STRING,"$dname",".1.3.6.1.4.1.41717.30.$index[1]",UNSIGNED32,"$retime",".1.3.6.1.4.1.41717.30.$index[2]",INTEGER,"$ostatus",".1.3.6.1.4.1.41717.30.$index[3]",UNSIGNED32,"$otime";
+
+    	          @index= map{$_ + 4} @index;
+                }
+                
+                my $sqlq = 'select * from dest_details';
+                my $sthq = $dbh->prepare($sqlq);
+                $sthq->execute();
+                while (my @row = $sthq->fetchrow_array) {
+                     my $ip = $row[1];
+                     my $ports = $row[2];
+                     my $community = $row[3];
+                     my ($session, $error) = Net::SNMP->session(
+                        -hostname  => $ip,
+                        -port => $ports,
+                        -community => $community,     
+                     );
+                     if (!defined($session)) {
+                        printf("ERROR: %s.\n", $error);
+                        exit 1;
+                     }
+                     my $result = $session->trap(
+                        -enterprise      => '1.3.6.1.4.1',
+                        -generictrap     => '6',
+                        -varbindlist  => \@infa,
+                     );
+                     if (!defined($result)) {
+                        printf("ERROR: %s.\n", $session->error());
+                     } 
+                     #else {
+                      #  printf("Trap-PDU sent.\n");
+                     #}
+                }
+               
+                
+             #}
+	 }  
+      }
+      my $xql = 'delete from recv_details';
+      my $xth = $dbh->prepare($xql);
+      $xth->execute();
+                  
+      
+      $dbh->disconnect();
+
+      
+}
+
+NetSNMP::TrapReceiver::register("all", \&my_receiver) || 
+    warn "failed to register our perl trap handler\n";
+
+print STDERR "Loaded the example perl snmptrapd handler\n";
+
+
