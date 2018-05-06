@@ -5,7 +5,7 @@
 - If status is '3', implies in 'FAIL' state and sends a trap with a specified MIB to the destination set using setTrapR.php
 - If two or more devices are in 'DANGER' state(status =2), a trap with a specifeid MIB is sent to all devices.
 - getStatus.php: The status of all the devices reported is visible from this page. If no device is reported, displays as 'FALSE'.
-- setTrapR.php: The communication details of trap destination are set using:setTrapR.php?ip=<ip of      receiver>&port=<port>&community=<community>
+- setTrapR.php: The communication details of trap destination are set using:setTrapR.php?ip=(receiver ip)&port=(port)&community=(community)
 - getTrapR.php: The configuration details set by setTrapR.php are readable via this page.
 - config.php : This file is used for simplifying the usage of database.
 - snmptrapd.conf : configured here to accept the traps from devices other than localhost and to run the traphandler.The udp port on which the traps are recieved is specified.
